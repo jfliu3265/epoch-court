@@ -35,14 +35,14 @@ export class GameApp {
   private saveStatusTimer = 0;
   private announcementTimer = 0;
   private hasExistingSave = false;
-  private diagnostics: RuntimeDiagnostics = { activeTimers: 0, activeListeners: 0, activeParticles: 0, activeMiniGame: null, webglContexts: 0, frames: 0, fps: 0 };
+  private diagnostics: RuntimeDiagnostics = { activeTimers: 0, activeListeners: 0, activeParticles: 0, activeAudioNodes: 0, activeMiniGame: null, webglContexts: 0, frames: 0, fps: 0 };
 
   private elements!: {
     start: HTMLElement; game: HTMLElement; name: HTMLInputElement; continueButton: HTMLButtonElement; newButton: HTMLButtonElement;
     sceneName: HTMLElement; quest: HTMLElement; resources: HTMLElement; lens: HTMLElement; progress: HTMLElement; prompt: HTMLElement; toast: HTMLElement;
     dialogue: HTMLDialogElement; dialogueSpeaker: HTMLElement; dialogueText: HTMLElement; dialogueClose: HTMLButtonElement;
     result: HTMLDialogElement; resultTitle: HTMLElement; resultBody: HTMLElement; retry: HTMLButtonElement; resultReturn: HTMLButtonElement;
-    settings: HTMLDialogElement; pause: HTMLDialogElement; court: HTMLDialogElement; error: HTMLElement;
+    settings: HTMLDialogElement; pause: HTMLDialogElement; court: HTMLDialogElement; lineage: HTMLDialogElement; error: HTMLElement;
     saveStatus: HTMLElement; inputHint: HTMLElement; touch: HTMLElement; importInput: HTMLInputElement;
   };
 
@@ -273,6 +273,7 @@ export class GameApp {
     const total = this.fpsWindow.reduce((sum, value) => sum + value, 0);
     this.diagnostics.fps = total > 0 ? Math.round(this.fpsWindow.length / total) : 0;
     this.diagnostics.activeParticles = this.particles.particles.length;
+    this.diagnostics.activeAudioNodes = this.audio.diagnostics().transientNodes;
     this.diagnostics.activeMiniGame = this.currentMiniGame;
     this.diagnostics.webglContexts = this.capabilities.webgl2 && this.state.settings.quality === 'high' ? 1 : 0;
   }
@@ -289,7 +290,9 @@ export class GameApp {
       if (!this.elements.settings.open) this.elements.settings.showModal();
     }));
     this.root.querySelector('[data-pause]')?.addEventListener('click', () => this.togglePause());
+    this.root.querySelector('[data-lineage]')?.addEventListener('click', () => this.openLineage());
     this.root.querySelector('[data-resume]')?.addEventListener('click', () => this.togglePause(false));
+    this.root.querySelector('[data-title]')?.addEventListener('click', () => void this.returnToTitle());
     this.root.querySelector('[data-restart]')?.addEventListener('click', () => void this.restart());
     this.root.querySelector('[data-build]')?.addEventListener('click', () => this.buildCourtArchive());
     this.root.querySelector('[data-export]')?.addEventListener('click', () => this.exportSave());
@@ -314,7 +317,7 @@ export class GameApp {
       sceneName: q('#scene-name'), quest: q('#quest'), resources: q('#resources'), lens: q('#lens'), progress: q('#progress'), prompt: q('#prompt'), toast: q('#toast'),
       dialogue: q('#dialogue'), dialogueSpeaker: q('#dialogue-speaker'), dialogueText: q('#dialogue-text'), dialogueClose: q('#dialogue-close'),
       result: q('#result-dialog'), resultTitle: q('#result-title'), resultBody: q('#result-body'), retry: q('#retry-game'), resultReturn: q('#return-world'),
-      settings: q('#settings-dialog'), pause: q('#pause-dialog'), court: q('#court-dialog'), error: q('#error-banner'),
+      settings: q('#settings-dialog'), pause: q('#pause-dialog'), court: q('#court-dialog'), lineage: q('#lineage-dialog'), error: q('#error-banner'),
       saveStatus: q('#save-status'), inputHint: q('#input-hint'), touch: q('#touch-controls'), importInput: q('#import-file'),
     };
   }
@@ -325,7 +328,7 @@ export class GameApp {
     if (!this.paused && this.elements.pause.open) this.elements.pause.close();
   }
 
-  private anyDialogOpen(): boolean { return this.elements.dialogue.open || this.elements.result.open || this.elements.settings.open || this.elements.pause.open || this.elements.court.open; }
+  private anyDialogOpen(): boolean { return this.elements.dialogue.open || this.elements.result.open || this.elements.settings.open || this.elements.pause.open || this.elements.court.open || this.elements.lineage.open; }
   private disposePlayable(): void { this.playable?.dispose(); this.playable = null; this.particles.clear(); this.diagnostics.activeMiniGame = null; }
   private announce(text: string, speaker = '弥光'): void { this.elements.dialogueSpeaker.textContent = speaker; this.elements.dialogueText.textContent = text; if (!this.elements.dialogue.open) this.elements.dialogue.showModal(); }
 
@@ -376,6 +379,41 @@ export class GameApp {
     await this.save.clear(); location.reload();
   }
 
+  private openLineage(): void {
+    const body = this.elements.lineage.querySelector<HTMLElement>('[data-lineage-body]')!;
+    const watercolorUnlocked = this.state.unlockedLenses.includes('watercolor');
+    body.innerHTML = `
+      <p>时代插槽决定当前叠加到世界的规则。每次只能装备一枚透镜。</p>
+      <button data-equip-lens="pixel" class="lineage-card ${this.state.activeLens === 'pixel' ? 'is-equipped' : ''}">
+        <strong>像素透镜</strong><span>显示方构网格、旧机关与地图通道</span><em>${this.state.activeLens === 'pixel' ? '已装备' : '装备'}</em>
+      </button>
+      <button data-equip-lens="watercolor" class="lineage-card ${this.state.activeLens === 'watercolor' ? 'is-equipped' : ''}" ${watercolorUnlocked ? '' : 'disabled'}>
+        <strong>水彩透镜</strong><span>显示植物情绪、隐藏水路与旧地源泉</span><em>${watercolorUnlocked ? (this.state.activeLens === 'watercolor' ? '已装备' : '装备') : '完成花粉连线后解锁'}</em>
+      </button>
+      <p class="lineage-tip">教程：在世界中按 Q 可快速交换已解锁透镜；同一场景的互动、道路和奖励会随插槽改变。</p>`;
+    body.querySelectorAll<HTMLButtonElement>('[data-equip-lens]').forEach((button) => button.addEventListener('click', () => {
+      const lens = button.dataset.equipLens as GameState['activeLens'];
+      if (!this.state.unlockedLenses.includes(lens)) return;
+      this.state.activeLens = lens; this.state.saveRevision += 1; this.state.updatedAt = Date.now();
+      this.updateHud(); this.audio.play('lens'); void this.persist('装备时代透镜'); this.elements.lineage.close();
+    }));
+    this.elements.lineage.showModal();
+  }
+
+  private async returnToTitle(): Promise<void> {
+    await this.persist('返回标题');
+    this.paused = false;
+    if (this.elements.pause.open) this.elements.pause.close();
+    this.running = false;
+    cancelAnimationFrame(this.frameRequest);
+    this.disposePlayable();
+    await this.audio.suspend();
+    this.elements.game.classList.add('is-hidden');
+    this.elements.start.classList.remove('is-hidden');
+    this.elements.continueButton.hidden = false;
+    this.elements.continueButton.textContent = `继续 · ${this.sceneLabel(this.state.scene)} · ${completionPercent(this.state)}%`;
+  }
+
   private renderCapabilitySummary(): void {
     const element = this.root.querySelector<HTMLElement>('#capability-summary')!;
     element.textContent = `${this.capabilities.webgl2 ? 'WebGL 2 特效可用' : 'Canvas 兼容模式'} · ${this.capabilities.webgpu ? 'WebGPU 增强入口可用' : 'WebGPU 非必需'} · ${this.capabilities.touch ? '支持触屏' : '键鼠/手柄'}`;
@@ -415,7 +453,7 @@ export class GameApp {
         <section id="game-shell" class="game-shell is-hidden" aria-label="游戏">
           <header class="top-hud">
             <div><span id="scene-name" class="scene-name">无声残片</span><span id="quest" class="quest"></span></div>
-            <div class="hud-actions"><span id="save-status">自动存档已开启</span><button data-settings aria-label="设置">⚙</button><button data-pause aria-label="暂停">Ⅱ</button></div>
+            <div class="hud-actions"><span id="save-status">自动存档已开启</span><button data-lineage aria-label="时代谱系">◇</button><button data-settings aria-label="设置">⚙</button><button data-pause aria-label="暂停">Ⅱ</button></div>
           </header>
           <div class="canvas-wrap">
             <canvas id="world-canvas" width="1280" height="720" aria-label="游戏世界画面"></canvas>
@@ -437,7 +475,8 @@ export class GameApp {
       <dialog id="dialogue" class="game-dialog dialogue"><p id="dialogue-speaker" class="speaker">弥光</p><p id="dialogue-text"></p><button id="dialogue-close" class="primary">继续</button></dialog>
       <dialog id="result-dialog" class="game-dialog"><h2 id="result-title">净化完成</h2><div id="result-body"></div><div class="dialog-actions"><button id="retry-game" class="secondary">再次挑战</button><button id="return-world" class="primary">返回世界</button></div></dialog>
       <dialog id="court-dialog" class="game-dialog"><p class="speaker">王庭修复台</p><h2>源律档案馆</h2><div data-court-body></div><div class="dialog-actions"><button data-close-dialog class="secondary">稍后</button><button data-build class="primary">修复</button></div></dialog>
-      <dialog id="pause-dialog" class="game-dialog"><p class="speaker">世界暂停</p><h2>在安全点停一会儿</h2><p>进度已经自动保存。任何非联网玩法都可以暂停。</p><div class="dialog-actions column"><button data-resume class="primary">继续游戏</button><button data-settings class="secondary">设置</button><button data-export class="secondary">导出存档</button></div></dialog>
+      <dialog id="pause-dialog" class="game-dialog"><p class="speaker">世界暂停</p><h2>在安全点停一会儿</h2><p>进度已经自动保存。任何非联网玩法都可以暂停。</p><div class="dialog-actions column"><button data-resume class="primary">继续游戏</button><button data-settings class="secondary">设置</button><button data-export class="secondary">导出存档</button><button data-title class="secondary">保存并返回标题</button></div></dialog>
+      <dialog id="lineage-dialog" class="game-dialog"><p class="speaker">时代谱系</p><h2>源律插槽</h2><div data-lineage-body></div><div class="dialog-actions"><button data-close-dialog class="primary">完成</button></div></dialog>
       <dialog id="settings-dialog" class="game-dialog settings-dialog"><p class="speaker">设置与无障碍</p><h2>让世界适合你</h2>
         <label>画质 <select name="quality" data-setting><option value="high">High · 完整 Shader 与粒子</option><option value="low">Low · Canvas 兼容模式</option></select></label>
         <label class="check"><input type="checkbox" name="reducedMotion" data-setting /> 减少动态、震屏和快速扭曲</label>

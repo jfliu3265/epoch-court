@@ -87,6 +87,7 @@ test('mini-game switching releases the previous module and context-loss is recov
   const diagnostics = await api(page, 'getDiagnostics') as any;
   expect(diagnostics.activeMiniGame).toBeNull();
   expect(diagnostics.activeParticles).toBe(0);
+  expect(diagnostics.activeAudioNodes).toBeLessThanOrEqual(4);
   await api(page, 'simulateContextLoss');
   await expect(page.getByRole('alert')).toContainText('安全暂停特效');
 });

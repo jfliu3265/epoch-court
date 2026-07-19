@@ -6,6 +6,7 @@ export class AudioEngine {
   private music: GainNode | null = null;
   private effects: GainNode | null = null;
   private voices: OscillatorNode[] = [];
+  private transientNodes = 0;
   private started = false;
 
   async awaken(state: GameState): Promise<void> {
@@ -42,6 +43,8 @@ export class AudioEngine {
     gain.gain.setValueAtTime(type === 'step' ? 0.018 : 0.12, now);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + (type === 'success' ? 0.35 : 0.12));
     oscillator.connect(gain).connect(this.effects);
+    this.transientNodes += 1;
+    oscillator.onended = () => { oscillator.disconnect(); gain.disconnect(); this.transientNodes = Math.max(0, this.transientNodes - 1); };
     oscillator.start(now);
     oscillator.stop(now + 0.4);
   }
@@ -56,7 +59,10 @@ export class AudioEngine {
     void this.context?.close();
     this.context = null;
     this.started = false;
+    this.transientNodes = 0;
   }
+
+  diagnostics(): { ambienceVoices: number; transientNodes: number } { return { ambienceVoices: this.voices.length, transientNodes: this.transientNodes }; }
 
   private createGraph(state: GameState): void {
     this.context = new AudioContext();

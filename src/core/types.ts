@@ -76,6 +76,7 @@ export interface RuntimeDiagnostics {
   activeTimers: number;
   activeListeners: number;
   activeParticles: number;
+  activeAudioNodes: number;
   activeMiniGame: MiniGameId | null;
   webglContexts: number;
   frames: number;
