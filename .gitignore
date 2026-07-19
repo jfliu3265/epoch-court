@@ -1,0 +1,11 @@
+node_modules/
+dist/
+playwright-report/
+test-results/
+.DS_Store
+*.log
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+playwright.config.js
+playwright.config.d.ts

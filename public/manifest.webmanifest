@@ -1,0 +1,11 @@
+{
+  "name": "万象净界：纪元王庭",
+  "short_name": "纪元王庭",
+  "description": "净化多重界域，让画面、声音与规则一同苏醒。",
+  "start_url": ".",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#08131b",
+  "theme_color": "#08131b",
+  "icons": []
+}
