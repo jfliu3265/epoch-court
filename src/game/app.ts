@@ -42,7 +42,7 @@ export class GameApp {
     sceneName: HTMLElement; quest: HTMLElement; resources: HTMLElement; lens: HTMLElement; progress: HTMLElement; prompt: HTMLElement; toast: HTMLElement;
     dialogue: HTMLDialogElement; dialogueSpeaker: HTMLElement; dialogueText: HTMLElement; dialogueClose: HTMLButtonElement;
     result: HTMLDialogElement; resultTitle: HTMLElement; resultBody: HTMLElement; retry: HTMLButtonElement; resultReturn: HTMLButtonElement;
-    settings: HTMLDialogElement; pause: HTMLDialogElement; court: HTMLDialogElement; lineage: HTMLDialogElement; error: HTMLElement;
+    settings: HTMLDialogElement; pause: HTMLDialogElement; court: HTMLDialogElement; lineage: HTMLDialogElement; feedback: HTMLDialogElement; error: HTMLElement;
     saveStatus: HTMLElement; inputHint: HTMLElement; touch: HTMLElement; importInput: HTMLInputElement;
   };
 
@@ -290,12 +290,14 @@ export class GameApp {
       if (!this.elements.settings.open) this.elements.settings.showModal();
     }));
     this.root.querySelector('[data-pause]')?.addEventListener('click', () => this.togglePause());
+    this.root.querySelector('[data-feedback]')?.addEventListener('click', () => this.openFeedback());
     this.root.querySelector('[data-lineage]')?.addEventListener('click', () => this.openLineage());
     this.root.querySelector('[data-resume]')?.addEventListener('click', () => this.togglePause(false));
     this.root.querySelector('[data-title]')?.addEventListener('click', () => void this.returnToTitle());
     this.root.querySelector('[data-restart]')?.addEventListener('click', () => void this.restart());
     this.root.querySelector('[data-build]')?.addEventListener('click', () => this.buildCourtArchive());
     this.root.querySelector('[data-export]')?.addEventListener('click', () => this.exportSave());
+    this.root.querySelector('[data-download-feedback]')?.addEventListener('click', () => this.downloadFeedback());
     this.root.querySelector('[data-import]')?.addEventListener('click', () => this.elements.importInput.click());
     this.elements.importInput.addEventListener('change', () => void this.importSave());
     this.root.querySelectorAll<HTMLInputElement>('[data-setting]').forEach((input) => input.addEventListener('input', () => this.readSettingsForm()));
@@ -317,7 +319,7 @@ export class GameApp {
       sceneName: q('#scene-name'), quest: q('#quest'), resources: q('#resources'), lens: q('#lens'), progress: q('#progress'), prompt: q('#prompt'), toast: q('#toast'),
       dialogue: q('#dialogue'), dialogueSpeaker: q('#dialogue-speaker'), dialogueText: q('#dialogue-text'), dialogueClose: q('#dialogue-close'),
       result: q('#result-dialog'), resultTitle: q('#result-title'), resultBody: q('#result-body'), retry: q('#retry-game'), resultReturn: q('#return-world'),
-      settings: q('#settings-dialog'), pause: q('#pause-dialog'), court: q('#court-dialog'), lineage: q('#lineage-dialog'), error: q('#error-banner'),
+      settings: q('#settings-dialog'), pause: q('#pause-dialog'), court: q('#court-dialog'), lineage: q('#lineage-dialog'), feedback: q('#feedback-dialog'), error: q('#error-banner'),
       saveStatus: q('#save-status'), inputHint: q('#input-hint'), touch: q('#touch-controls'), importInput: q('#import-file'),
     };
   }
@@ -328,7 +330,7 @@ export class GameApp {
     if (!this.paused && this.elements.pause.open) this.elements.pause.close();
   }
 
-  private anyDialogOpen(): boolean { return this.elements.dialogue.open || this.elements.result.open || this.elements.settings.open || this.elements.pause.open || this.elements.court.open || this.elements.lineage.open; }
+  private anyDialogOpen(): boolean { return this.elements.dialogue.open || this.elements.result.open || this.elements.settings.open || this.elements.pause.open || this.elements.court.open || this.elements.lineage.open || this.elements.feedback.open; }
   private disposePlayable(): void { this.playable?.dispose(); this.playable = null; this.particles.clear(); this.diagnostics.activeMiniGame = null; }
   private announce(text: string, speaker = '弥光'): void { this.elements.dialogueSpeaker.textContent = speaker; this.elements.dialogueText.textContent = text; if (!this.elements.dialogue.open) this.elements.dialogue.showModal(); }
 
@@ -414,6 +416,37 @@ export class GameApp {
     this.elements.continueButton.textContent = `继续 · ${this.sceneLabel(this.state.scene)} · ${completionPercent(this.state)}%`;
   }
 
+  private openFeedback(): void {
+    const summary = this.elements.feedback.querySelector<HTMLElement>('[data-feedback-summary]')!;
+    summary.textContent = `当前进度 ${completionPercent(this.state)}% · 游玩 ${Math.round(this.state.totalPlaySeconds / 60)} 分钟 · 已完成 ${Object.values(this.state.miniGames).filter((item) => item.completed).length}/4 个小游戏`;
+    this.elements.feedback.showModal();
+  }
+
+  private downloadFeedback(): void {
+    const field = (name: string) => this.elements.feedback.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`[name="${name}"]`)!;
+    const payload = {
+      format: 'epoch-court-feedback-v1',
+      createdAt: new Date().toISOString(),
+      build: '0.1.0',
+      progress: completionPercent(this.state),
+      totalPlaySeconds: Math.round(this.state.totalPlaySeconds),
+      completedGames: Object.fromEntries(Object.entries(this.state.miniGames).map(([id, record]) => [id, { completed: record.completed, bestScore: record.bestScore, attempts: record.attempts }])),
+      capabilities: this.capabilities,
+      answers: {
+        understoodGoal: field('understoodGoal').value,
+        sharedWorld: field('sharedWorld').value,
+        noticedEvolutions: field('noticedEvolutions').value,
+        favorite: field('favorite').value,
+        confusing: field('confusing').value,
+        continueIntent: field('continueIntent').value,
+      },
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob); const anchor = document.createElement('a');
+    anchor.href = url; anchor.download = `epoch-court-feedback-${Date.now()}.json`; anchor.click(); URL.revokeObjectURL(url);
+    this.toast('反馈 JSON 已下载；它不会自动上传。感谢帮助王庭苏醒。', 6200, true);
+  }
+
   private renderCapabilitySummary(): void {
     const element = this.root.querySelector<HTMLElement>('#capability-summary')!;
     element.textContent = `${this.capabilities.webgl2 ? 'WebGL 2 特效可用' : 'Canvas 兼容模式'} · ${this.capabilities.webgpu ? 'WebGPU 增强入口可用' : 'WebGPU 非必需'} · ${this.capabilities.touch ? '支持触屏' : '键鼠/手柄'}`;
@@ -453,7 +486,7 @@ export class GameApp {
         <section id="game-shell" class="game-shell is-hidden" aria-label="游戏">
           <header class="top-hud">
             <div><span id="scene-name" class="scene-name">无声残片</span><span id="quest" class="quest"></span></div>
-            <div class="hud-actions"><span id="save-status">自动存档已开启</span><button data-lineage aria-label="时代谱系">◇</button><button data-settings aria-label="设置">⚙</button><button data-pause aria-label="暂停">Ⅱ</button></div>
+            <div class="hud-actions"><span id="save-status">自动存档已开启</span><button data-feedback aria-label="试玩反馈">✎</button><button data-lineage aria-label="时代谱系">◇</button><button data-settings aria-label="设置">⚙</button><button data-pause aria-label="暂停">Ⅱ</button></div>
           </header>
           <div class="canvas-wrap">
             <canvas id="world-canvas" width="1280" height="720" aria-label="游戏世界画面"></canvas>
@@ -477,6 +510,16 @@ export class GameApp {
       <dialog id="court-dialog" class="game-dialog"><p class="speaker">王庭修复台</p><h2>源律档案馆</h2><div data-court-body></div><div class="dialog-actions"><button data-close-dialog class="secondary">稍后</button><button data-build class="primary">修复</button></div></dialog>
       <dialog id="pause-dialog" class="game-dialog"><p class="speaker">世界暂停</p><h2>在安全点停一会儿</h2><p>进度已经自动保存。任何非联网玩法都可以暂停。</p><div class="dialog-actions column"><button data-resume class="primary">继续游戏</button><button data-settings class="secondary">设置</button><button data-export class="secondary">导出存档</button><button data-title class="secondary">保存并返回标题</button></div></dialog>
       <dialog id="lineage-dialog" class="game-dialog"><p class="speaker">时代谱系</p><h2>源律插槽</h2><div data-lineage-body></div><div class="dialog-actions"><button data-close-dialog class="primary">完成</button></div></dialog>
+      <dialog id="feedback-dialog" class="game-dialog feedback-dialog"><p class="speaker">本地试玩反馈</p><h2>帮助下一纪元变得更好</h2><p data-feedback-summary></p>
+        <label>你理解的游戏目标是什么？<textarea name="understoodGoal" rows="2"></textarea></label>
+        <label>这些小游戏是否像同一个世界？为什么？<textarea name="sharedWorld" rows="2"></textarea></label>
+        <label>你注意到哪些世界变化？<textarea name="noticedEvolutions" rows="2"></textarea></label>
+        <label>最喜欢的部分<textarea name="favorite" rows="2"></textarea></label>
+        <label>最困惑或最不喜欢的部分<textarea name="confusing" rows="2"></textarea></label>
+        <label>你愿意继续下一个界域吗？<select name="continueIntent"><option value="yes">愿意</option><option value="maybe">也许</option><option value="no">不愿意</option></select></label>
+        <p class="privacy-note">反馈只在本地生成文件，不会自动上传或收集身份信息。</p>
+        <div class="dialog-actions wrap"><button data-close-dialog class="secondary">稍后</button><button data-download-feedback class="primary">下载反馈 JSON</button></div>
+      </dialog>
       <dialog id="settings-dialog" class="game-dialog settings-dialog"><p class="speaker">设置与无障碍</p><h2>让世界适合你</h2>
         <label>画质 <select name="quality" data-setting><option value="high">High · 完整 Shader 与粒子</option><option value="low">Low · Canvas 兼容模式</option></select></label>
         <label class="check"><input type="checkbox" name="reducedMotion" data-setting /> 减少动态、震屏和快速扭曲</label>
